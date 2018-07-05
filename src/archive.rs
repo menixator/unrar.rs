@@ -1,3 +1,4 @@
+#![feature(nll)]
 use native;
 use regex::Regex;
 use libc::{c_uint, c_long, c_int};
@@ -222,7 +223,17 @@ impl OpenArchive {
     }
 
     pub fn process(&mut self) -> UnrarResult<Vec<Entry>> {
-        let (ts, es): (Vec<_>, Vec<_>) = self.partition(|x| x.is_ok());
+        let (ts, es): (Vec<_>, Vec<_>) = self.partition(|mut e| {
+            match *e {
+                Ok(ref mut entry) => {
+                    match entry.process(self.handle, self.operation, &self.destination) {
+                        Ok(entry) => true,
+                        _ => false
+                    }
+                }
+                _ => false
+            }
+        });
         let mut results: Vec<_> = ts.into_iter().map(|x| x.unwrap()).collect();
         match es.into_iter().map(|x| x.unwrap_err()).next() {
             Some(error) => {
@@ -261,44 +272,13 @@ impl Iterator for OpenArchive {
         if self.damaged {
             return None;
         }
-        let mut volume = None;
-        unsafe {
-            native::RARSetCallback(self.handle, Self::callback, &mut volume as *mut _ as c_long)
-        }
         let mut header = native::HeaderData::default();
         let read_result =
             Code::from(unsafe { native::RARReadHeader(self.handle, &mut header as *mut _) as u32 })
                 .unwrap();
         match read_result {
             Code::Success => {
-                let process_result = Code::from(unsafe {
-                                         native::RARProcessFile(
-                        self.handle,
-                        self.operation as i32,
-                        self.destination.as_ref().map(
-                            |x| x.as_ptr() as *const _
-                        ).unwrap_or(0 as *const _),
-                        0 as *const _
-                    ) as u32
-                                     })
-                                         .unwrap();
-                match process_result {
-                    Code::Success | Code::EOpen => {
-                        let mut entry = Entry::from(header);
-                        // EOpen on Process: Next volume not found
-                        if process_result == Code::EOpen {
-                            entry.next_volume = volume;
-                            self.damaged = true;
-                            Some(Err(UnrarError::new(process_result, When::Process, entry)))
-                        } else {
-                            Some(Ok(entry))
-                        }
-                    }
-                    _ => {
-                        self.damaged = true;
-                        Some(Err(UnrarError::from(process_result, When::Process)))
-                    }
-                }
+                Some(Ok(Entry::from(header)))
             }
             Code::EndArchive => None,
             _ => {
@@ -355,6 +335,39 @@ impl Entry {
 
     pub fn is_file(&self) -> bool {
         !self.is_directory()
+    }
+
+    pub fn process(&mut self, handle: native::Handle, operation: Operation, destination: &Option<String>) -> UnrarResult<()> {
+        let mut volume = None;
+        unsafe {
+            native::RARSetCallback(handle, OpenArchive::callback, &mut volume as *mut _ as c_long)
+        }
+        let process_result = Code::from(unsafe {
+                                 native::RARProcessFile(
+                handle,
+                operation as i32,
+                destination.as_ref().map(
+                    |x| x.as_ptr() as *const _
+                ).unwrap_or(0 as *const _),
+                0 as *const _
+            ) as u32
+                             })
+                                 .unwrap();
+        match process_result {
+            Code::Success | Code::EOpen => {
+                // EOpen on Process: Next volume not found
+                if process_result == Code::EOpen {
+                    self.next_volume = volume;
+                    // self.damaged = true;
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            }
+            _ => {
+                Err(UnrarError::from(process_result, When::Process))
+            }
+        }
     }
 }
 
