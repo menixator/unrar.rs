@@ -215,15 +215,16 @@ impl OpenArchive {
         destination: Option<String>,
         operation: Operation,
     ) -> UnrarResult<Self> {
-        let mut data =
-            native::OpenArchiveData::new(cstr!(filename).as_ptr() as *const _, mode as u32);
+        let filename = cstr!(filename);
+        let mut data = native::OpenArchiveData::new(filename.as_ptr() as *const _, mode as u32);
         let handle = unsafe { native::RAROpenArchive(&mut data as *mut _) };
         let result = Code::from(data.open_result).unwrap();
         if handle.is_null() {
             Err(UnrarError::from(result, When::Open))
         } else {
             if let Some(pw) = password {
-                unsafe { native::RARSetPassword(handle, cstr!(pw).as_ptr() as *const _) }
+                let pw = cstr!(pw);
+                unsafe { native::RARSetPassword(handle, pw.as_ptr() as *const _) }
             }
             let dest = destination.map(|path| cstr!(path));
             let archive = OpenArchive {
