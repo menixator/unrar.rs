@@ -1,13 +1,15 @@
 extern crate tempdir;
 extern crate unrar;
 
-use tempdir::TempDir;
 use std::fs::File;
 use std::io::prelude::*;
+use tempdir::TempDir;
 
 #[test]
 fn version_list() {
-    let mut entries = unrar::Archive::new("data/version.rar".into()).list().unwrap();
+    let mut entries = unrar::Archive::new("data/version.rar".into())
+        .list()
+        .unwrap();
     assert_eq!(entries.next().unwrap().unwrap().filename, "VERSION");
 }
 

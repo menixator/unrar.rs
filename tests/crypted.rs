@@ -1,11 +1,11 @@
 extern crate tempdir;
 extern crate unrar;
 
-use unrar::Archive;
-use unrar::error::{Code, When};
-use tempdir::TempDir;
 use std::fs::File;
 use std::io::prelude::*;
+use tempdir::TempDir;
+use unrar::error::{Code, When};
+use unrar::Archive;
 
 #[test]
 fn list() {
